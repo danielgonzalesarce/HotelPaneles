@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { storage } from '../services/storage';
 import { Room } from '../types';
 import { formatCurrency } from '../lib/utils';
+import RoomReviewsSection from '../components/RoomReviewsSection';
 
 export default function RoomDetail() {
   const { id } = useParams();
@@ -22,6 +23,8 @@ export default function RoomDetail() {
   }, [id, navigate]);
 
   if (!room) return null;
+
+  const allReviews = storage.getReviews();
 
   const nextImage = () => setActiveImage((prev) => (prev + 1) % room.images.length);
   const prevImage = () => setActiveImage((prev) => (prev - 1 + room.images.length) % room.images.length);
@@ -136,6 +139,8 @@ export default function RoomDetail() {
           </div>
         </div>
       </div>
+
+      <RoomReviewsSection room={room} allReviews={allReviews} />
     </div>
   );
 }

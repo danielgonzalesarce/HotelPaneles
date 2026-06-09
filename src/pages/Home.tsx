@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Calendar, Users, ArrowRight, Wifi, Waves, Utensils, Sprout, Car, Wind, Star, MapPin, Navigation, ExternalLink } from 'lucide-react';
+import { Wifi, Waves, Utensils, Sprout, Car, Wind, MapPin, Navigation, ExternalLink } from 'lucide-react';
 import { motion } from 'motion/react';
 import { storage } from '../services/storage';
 import { formatCurrency } from '../lib/utils';
 import { useTenant } from '../TenantContext';
+import GuestReviewsMarquee from '../components/GuestReviewsMarquee';
+import { getGeneralReviews } from '../utils/reviewHelpers';
 
 export default function Home() {
   const navigate = useNavigate();
   const { currentTenant } = useTenant();
   const rooms = storage.getRooms().filter(r => r.featured);
-  const reviews = storage.getReviews().filter(r => r.approved);
+  const reviews = getGeneralReviews(storage.getReviews());
   const gallery = storage.getGallery();
   const config = storage.getConfig();
 
@@ -186,25 +188,17 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Reviews */}
-      <section className="max-w-7xl mx-auto px-4">
-        <h2 className="text-3xl font-bold text-gray-900 text-center mb-12">Lo que dicen nuestros huéspedes</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {reviews.slice(0, 3).map((review) => (
-            <div key={review.id} className="card p-6">
-              <div className="flex gap-1 mb-4">
-                {[...Array(5)].map((_, i) => (
-                  <Star key={i} className={`h-4 w-4 ${i < review.rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`} />
-                ))}
-              </div>
-              <p className="text-gray-600 italic mb-6">"{review.comment}"</p>
-              <div className="flex items-center justify-between border-t border-gray-100 pt-4">
-                <span className="font-bold text-gray-900">{review.userName}</span>
-                <span className="text-xs text-gray-400">{review.date}</span>
-              </div>
-            </div>
-          ))}
+      {/* Reviews — doble carrusel automático */}
+      <section className="w-full overflow-hidden">
+        <div className="max-w-7xl mx-auto px-4 mb-10">
+          <h2 className="text-3xl md:text-4xl font-bold text-slate-950 text-center mb-3 tracking-tight">
+            Lo que dicen nuestros huéspedes
+          </h2>
+          <p className="text-center text-slate-500 text-sm md:text-base">
+            Experiencias generales sobre el hotel Lumina
+          </p>
         </div>
+        <GuestReviewsMarquee reviews={reviews} />
       </section>
 
       {/* Location */}

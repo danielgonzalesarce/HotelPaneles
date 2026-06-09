@@ -22,6 +22,8 @@ import { generateElectronicInvoicePdf } from '../utils/electronicInvoicePdf';
 import { buildElectronicPayload, payloadToInvoice, BOLETA_DNI_REQUIRED_FROM, getDefaultSeries } from '../utils/invoiceHelpers';
 import { emitSunatComprobante, getSunatStatus } from '../services/sunatService';
 import ExportButtons from '../components/admin/ExportButtons';
+import { ReviewAvatar } from '../components/UserAvatar';
+import { getReviewScopeLabel } from '../utils/reviewHelpers';
 import {
   AppModal,
   FormSection,
@@ -1460,9 +1462,11 @@ function AdminReviews() {
       </div>
       <div className="grid grid-cols-1 gap-6">
         {reviews.map(review => (
-          <div key={review.id} className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm flex justify-between items-center">
-            <div className="space-y-2">
-              <div className="flex items-center gap-4">
+          <div key={review.id} className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm flex justify-between items-center gap-4">
+            <div className="flex gap-4 min-w-0">
+              <ReviewAvatar review={review} size="lg" ring />
+              <div className="space-y-2 min-w-0">
+              <div className="flex items-center gap-4 flex-wrap">
                 <span className="font-bold text-gray-900">{review.userName}</span>
                 <div className="flex gap-1">
                   {[...Array(5)].map((_, i) => (
@@ -1470,8 +1474,10 @@ function AdminReviews() {
                   ))}
                 </div>
                 {!review.approved && <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full font-bold">Pendiente</span>}
+                <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-full font-semibold">{getReviewScopeLabel(review)}</span>
               </div>
               <p className="text-gray-600 italic">"{review.comment}"</p>
+              </div>
             </div>
             <div className="flex gap-2">
               {!review.approved && (

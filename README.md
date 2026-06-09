@@ -1,37 +1,96 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Lumina Hotel & Spa
 
-# Run and deploy your AI Studio app
+Sistema de gestión hotelera con sitio público, reservas, recepcionista IA (Valentina), paneles de usuario/administrador/super admin y facturación electrónica SUNAT simulada.
 
-This contains everything you need to run your app locally.
+## Requisitos
 
-View your app in AI Studio: https://ai.studio/apps/87946739-77c2-4baf-a8db-fe14b9dcaa19
+- Node.js 20+
+- npm 10+
 
-## Run Locally
+## Desarrollo local
 
-**Prerequisites:** Node.js
+1. Instalar dependencias:
 
-1. Install dependencies:
-   `npm install`
-2. Copy `.env.example` to `.env.local` and set:
-   - `GEMINI_API_KEY` — [Google AI Studio](https://aistudio.google.com/apikey)
-   - `VITE_STRIPE_PUBLISHABLE_KEY` — Stripe test key (optional, for simulated checkout)
-3. **(Optional) Supabase** — persistent database instead of browser localStorage:
-   1. Create a project at [supabase.com](https://supabase.com)
-   2. Open **SQL Editor** and run the script [`supabase/schema.sql`](supabase/schema.sql)
-   3. In **Project Settings → API**, copy **Project URL** and **anon public** key
-   4. Add to `.env.local`:
-      ```
-      VITE_SUPABASE_URL=https://xxxx.supabase.co
-      VITE_SUPABASE_ANON_KEY=eyJ...
-      ```
-   5. Restart the dev server. You should see a green “Supabase conectado” badge when it works.
-4. **(Optional) Google Sign-In** — secure login via Supabase Auth:
-   1. Follow [`supabase/google-auth-setup.md`](supabase/google-auth-setup.md)
-   2. Enable Google provider in Supabase and add redirect URL `http://localhost:3000/auth/callback`
-5. Run the app:
-   `npm run dev`
+```bash
+npm install
+```
 
-> **Windows note:** If `npm run dev` fails because the folder name contains `&`, run:
-> `node .\node_modules\tsx\dist\cli.mjs .\server.ts`
+2. Copiar variables de entorno:
+
+```bash
+copy .env.example .env.local
+```
+
+Configurar al menos `GEMINI_API_KEY` en `.env.local`.
+
+3. Iniciar servidor (frontend + API en puerto 3000):
+
+```bash
+npm run dev
+```
+
+> **Windows:** si la ruta del proyecto contiene `&`, use el script tal cual (`npm run dev` ya invoca `tsx` directamente).
+
+Health check: `GET http://localhost:3000/api/health`
+
+## Producción
+
+1. Configurar `.env.local` (o variables del hosting) con claves reales y `APP_URL` apuntando al dominio público.
+
+2. Compilar frontend y arrancar servidor Express:
+
+```bash
+npm run build
+npm start
+```
+
+El comando `npm start` sirve la carpeta `dist/` y expone las APIs bajo `/api/*`. Las rutas del SPA (React Router) redirigen a `index.html`.
+
+### Variables importantes en producción
+
+| Variable | Descripción |
+|----------|-------------|
+| `GEMINI_API_KEY` | IA del recepcionista |
+| `APP_URL` | URL pública (Stripe, OAuth) |
+| `STRIPE_SECRET_KEY` | Pagos reales (opcional) |
+| `VITE_SUPABASE_*` | Persistencia en Supabase |
+| `N8N_WEBHOOK_URL` | Proxy n8n para Valentina (opcional) |
+
+## Scripts
+
+| Comando | Descripción |
+|---------|-------------|
+| `npm run dev` | Desarrollo con Vite HMR + API |
+| `npm run build` | Build estático en `dist/` |
+| `npm start` | Servidor producción (requiere `build`) |
+| `npm run lint` | Verificación TypeScript |
+| `npm test` | Tests unitarios (Vitest) |
+
+## Estructura de rutas
+
+| Ruta | Acceso |
+|------|--------|
+| `/` | Público |
+| `/habitaciones`, `/reserva`, `/contacto` | Público |
+| `/login` | Autenticación |
+| `/user/*` | Rol `user` |
+| `/admin/*` | Rol `admin` |
+| `/superadmin/*` | Rol `super_admin` |
+
+Las rutas están centralizadas en `src/routes/` con lazy loading y guards por rol.
+
+## Supabase (opcional)
+
+1. Crear proyecto en [supabase.com](https://supabase.com)
+2. Ejecutar `supabase/schema.sql`
+3. Añadir `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`
+4. Google OAuth: ver `supabase/google-auth-setup.md`
+
+## n8n (opcional)
+
+Workflow de referencia: `n8n-valentina-workflow.json`. Webhook → `POST /api/receptionist/chat`.
+
+## Credenciales demo (localStorage)
+
+- Super Admin: `superadmin@empresa.com` / `super`
+- Admin: `admin@hotel.com` / `admin`

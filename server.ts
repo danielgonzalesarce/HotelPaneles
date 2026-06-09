@@ -8,15 +8,15 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import cors from "cors";
 import Stripe from "stripe";
-import {
-  chatWithCursorConcierge,
-  type ConciergeHotelContext,
-} from "./lib/cursor-concierge.js";
 import { handleReceptionistChat } from "./lib/receptionist-chat.js";
 import { emitElectronicDocument, validateElectronicInvoice } from "./lib/sunat/emit.js";
 import type { ElectronicInvoicePayload } from "./lib/sunat/types.js";
 import { isSunatSimulation, resolveSunatProvider } from "./lib/sunat/config.js";
 import { validateRucLocally } from "./lib/ruc/validate.js";
+
+const isProduction =
+  process.env.NODE_ENV === "production" ||
+  process.env.npm_lifecycle_event === "start";
 
 async function startServer() {
   const app = express();
@@ -39,10 +39,42 @@ async function startServer() {
     return stripeClient;
   }
 
+  const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL?.trim();
+
   // API routes
   app.get("/api/health", (_req, res) => {
-    res.json({ ok: true, receptionist: true, gemini: Boolean(process.env.GEMINI_API_KEY) });
+    res.json({
+      ok: true,
+      receptionist: true,
+      gemini: Boolean(process.env.GEMINI_API_KEY),
+      n8n: Boolean(n8nWebhookUrl),
+    });
   });
+
+  /** Chat web → n8n → /api/receptionist/chat (evita CORS y no crea bucle con n8n) */
+  if (n8nWebhookUrl) {
+    app.post("/api/n8n/receptionist", async (req, res) => {
+      try {
+        const upstream = await fetch(n8nWebhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(req.body ?? {}),
+        });
+        const data = await upstream.json().catch(() => ({}));
+        if (!upstream.ok) {
+          return res.status(upstream.status).json(data);
+        }
+        res.json(data);
+      } catch (error: any) {
+        console.error("Error proxy n8n:", error);
+        res.status(502).json({
+          error: "n8n no disponible",
+          message:
+            "Verifique que Docker y n8n estén activos (http://localhost:5678) y el workflow Valentina publicado.",
+        });
+      }
+    });
+  }
 
   app.post("/api/receptionist/chat", async (req, res) => {
     try {
@@ -73,7 +105,7 @@ async function startServer() {
     }
   });
 
-  /** Compatibilidad con clientes antiguos */
+  /** Compatibilidad con clientes antiguos del concierge */
   app.post("/api/concierge", async (req, res) => {
     try {
       const { message, sessionId, context, history, origin, hotelSnapshot } = req.body ?? {};
@@ -112,51 +144,6 @@ async function startServer() {
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: error?.message });
-    }
-  });
-
-  app.post("/api/chat", async (req, res) => {
-    try {
-      const apiKey = process.env.CURSOR_API_KEY;
-      if (!apiKey) {
-        return res.status(503).json({
-          error: "Servicio no configurado",
-          message: "CURSOR_API_KEY no está definida.",
-        });
-      }
-
-      const { message, agentId, context } = req.body ?? {};
-
-      if (!message || typeof message !== "string") {
-        return res.status(400).json({ error: "Se requiere el campo message." });
-      }
-
-      if (!context || typeof context !== "object") {
-        return res.status(400).json({ error: "Se requiere el contexto del hotel." });
-      }
-
-      const hotelContext = context as ConciergeHotelContext;
-
-      if (
-        !hotelContext.name ||
-        !Array.isArray(hotelContext.rooms) ||
-        hotelContext.rooms.length === 0
-      ) {
-        return res.status(400).json({ error: "Contexto del hotel incompleto." });
-      }
-
-      const result = await chatWithCursorConcierge(apiKey, hotelContext, {
-        message: message.trim(),
-        agentId: typeof agentId === "string" ? agentId : null,
-      });
-
-      res.json(result);
-    } catch (error: any) {
-      console.error("Error in concierge chat:", error);
-      res.status(500).json({
-        error: "Error al procesar la consulta",
-        message: error?.message ?? "Error desconocido",
-      });
     }
   });
 
@@ -322,7 +309,7 @@ async function startServer() {
   });
 
   // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  if (!isProduction) {
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
@@ -332,16 +319,19 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*all', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath, { index: false, maxAge: "1d" }));
+    app.get(/^(?!\/api).*/, (_req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
   server.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Server running on http://localhost:${PORT} (${isProduction ? "production" : "development"})`);
     console.log(`Receptionist API: POST http://localhost:${PORT}/api/receptionist/chat`);
+    if (n8nWebhookUrl) {
+      console.log(`Chat web (n8n): POST http://localhost:${PORT}/api/n8n/receptionist → ${n8nWebhookUrl}`);
+    }
   });
 }
 

@@ -34,22 +34,36 @@ export function parseGuestCount(text: string, allowBare = false): number | undef
   return undefined;
 }
 
+function isLikelyNotAName(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  if (
+    /^(?:hola|hey|hi|hello|saludos|buenas?(?:\s+(?:tardes|d[ií]as|noches))?|buenos?\s+d[ií]as|buenas?\s+tardes|buenas?\s+noches|si|s[ií]|ok|gracias|quiero|seguir|disculpe|perd[oó]n)$/i.test(
+      t
+    )
+  ) {
+    return true;
+  }
+  if (/reserv|habitaci|disponib|precio|ma[nñ]ana|hoy/i.test(t)) return true;
+  return false;
+}
+
 function parseGuestName(text: string): string | undefined {
   const trimmed = text.trim();
   const named = trimmed.match(
     /(?:me llamo|soy|mi nombre(?:\s+completo)?(?:\s+es)?)\s+([A-ZÁÉÍÓÚÑa-záéíóúñ][\w\s.'-]{2,60})/i
   );
-  if (named) return named[1].trim();
+  if (named && !isLikelyNotAName(named[1])) return named[1].trim();
 
   const commaDate = trimmed.match(/^([A-ZÁÉÍÓÚÑa-záéíóúñ][\w\s.'-]{2,60}),\s*\d/);
-  if (commaDate) return commaDate[1].trim();
+  if (commaDate && !isLikelyNotAName(commaDate[1])) return commaDate[1].trim();
 
   const commaBooking = trimmed.match(
     /^([A-ZÁÉÍÓÚÑa-záéíóúñ][\w\s.'-]{2,60}),\s*(?:reserv|quiero|deseo|necesito|me gustar|para el|del \d)/i
   );
-  if (commaBooking) return commaBooking[1].trim();
+  if (commaBooking && !isLikelyNotAName(commaBooking[1])) return commaBooking[1].trim();
 
-  return parseBareName(trimmed);
+  const bare = parseBareName(trimmed);
+  return bare && !isLikelyNotAName(bare) ? bare : undefined;
 }
 
 export { parseGuestName };
@@ -229,7 +243,11 @@ export function renderBookingProgressPrompt(ctx: BookingConversationContext): st
     return `Con gusto, **${ctx.guestName ?? "estimado huésped"}**. ¿Para qué **fecha de entrada y salida** desea reservar? (Ej.: *miércoles 10/06 al viernes 12/06* o *3 noches*)`;
   }
   if (ctx.missing.includes("name")) {
-    return `Perfecto, retomamos ${summary}. ¿Me indica su **nombre completo**?`;
+    const stay =
+      ctx.checkIn && ctx.checkOut
+        ? ` Anoto su estadía del **${ctx.checkIn}** al **${ctx.checkOut}**.`
+        : "";
+    return `Con gusto le ayudo con la reserva.${stay} ¿Me indica su **nombre completo**?`;
   }
   if (ctx.missing.includes("guests")) {
     return `Gracias, **${ctx.guestName}**. Para el **${ctx.checkIn}** al **${ctx.checkOut}**, ¿cuántas **personas** serán?`;

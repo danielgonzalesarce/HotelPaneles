@@ -72,10 +72,10 @@ export default function Rooms() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-12 flex flex-col md:flex-row gap-8">
-        {/* Filters Sidebar */}
-        <aside className="md:w-72 flex-shrink-0">
-          <div className="bg-white p-6 rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-100 sticky top-24 z-30 space-y-8">
+      <div className="max-w-7xl mx-auto px-4 py-12 flex flex-col md:flex-row gap-8 items-start">
+        {/* Sidebar fijo al hacer scroll (sticky); max-height evita que tape toda la pantalla */}
+        <aside className="w-full md:w-72 shrink-0 sticky top-20 self-start z-10">
+          <div className="bg-white p-6 rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-100 space-y-8 max-h-[calc(100vh-5.5rem)] overflow-y-auto overscroll-contain">
             {/* Dates */}
             <div>
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 block flex items-center gap-1">
@@ -162,8 +162,8 @@ export default function Rooms() {
         </aside>
 
         {/* List */}
-        <div className="flex-1">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div className="flex-1 w-full min-w-0 relative z-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-8">
             {filteredRooms.map((room) => {
               const isUnavailable = unavailableIds.has(room.id);
               const reserveParams = new URLSearchParams({ roomId: room.id });
@@ -173,9 +173,9 @@ export default function Rooms() {
               return (
               <motion.div
                 key={room.id}
-                layout
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25 }}
                 className={`bg-white rounded-3xl p-3 border shadow-sm hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-300 flex flex-col group ${
                   isUnavailable ? 'border-amber-200 opacity-90' : 'border-slate-100'
                 }`}

@@ -7,6 +7,7 @@ import { User as UserType } from '../types';
 import { useTenant } from '../TenantContext';
 import { useAuth } from '../AuthContext';
 import { getDashboardPathForRole, resolveRoleForEmail } from '../services/authService';
+import { buildAvatarFromName } from '../utils/userAvatar';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -77,6 +78,7 @@ export default function Login() {
         password,
         name: fullName,
         phone,
+        avatarUrl: buildAvatarFromName(fullName),
         role: resolveRoleForEmail(email),
       };
 

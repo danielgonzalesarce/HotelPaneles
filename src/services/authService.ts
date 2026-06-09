@@ -2,6 +2,7 @@ import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { getSupabase, isSupabaseConfigured } from '../lib/supabase';
 import { storage } from './storage';
 import type { User } from '../types';
+import { buildAvatarFromName, extractGoogleAvatar } from '../utils/userAvatar';
 
 /** Correos con acceso a paneles administrativos (Google OAuth y login local). */
 const ROLE_BY_EMAIL: Record<string, User['role']> = {
@@ -39,6 +40,10 @@ export function mapSupabaseUserToAppUser(supabaseUser: SupabaseUser): User {
     email: supabaseUser.email ?? existing?.email ?? '',
     name: resolveDisplayName(supabaseUser, existing?.name),
     phone: existing?.phone ?? supabaseUser.user_metadata?.phone ?? '',
+    avatarUrl:
+      extractGoogleAvatar(supabaseUser.user_metadata as Record<string, unknown>) ??
+      existing?.avatarUrl ??
+      buildAvatarFromName(resolveDisplayName(supabaseUser, existing?.name)),
     role: resolveRoleForEmail(email),
   };
 

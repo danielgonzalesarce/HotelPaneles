@@ -74,6 +74,18 @@ describe("receptionist conversation flow", () => {
     expect(parseBareName("Daniel Alexander")).toBe("Daniel Alexander");
   });
 
+  it("no toma Hola como nombre en saludo con reserva", () => {
+    const answer = generateFallbackReply(
+      "Hola, quiero reservar para mañana",
+      snapshot,
+      [],
+      [{ role: "assistant", content: "Buenas tardes, le saluda Valentina..." }]
+    );
+    expect(answer).not.toMatch(/\*\*Hola\*\*/);
+    expect(answer).toMatch(/nombre completo/i);
+    expect(answer).not.toMatch(/cu[aá]ntas personas/i);
+  });
+
   it("responde disponibilidad para otro día de la semana", () => {
     const answer = generateFallbackReply("quiero para el viernes", snapshot, [], [
       {

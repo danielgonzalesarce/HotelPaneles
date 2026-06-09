@@ -12,7 +12,153 @@ import {
   TenantInvoice,
   GlobalConfig,
 } from '../types';
-import { INITIAL_ROOMS, INITIAL_REVIEWS, INITIAL_USERS, INITIAL_CONFIG, INITIAL_GALLERY, INITIAL_TENANTS } from '../data/initialData';
+import { INITIAL_ROOMS, INITIAL_REVIEWS, INITIAL_USERS, INITIAL_CONFIG, INITIAL_GALLERY, INITIAL_TENANTS, createRoomReviewEntry, reviewsPerRoom, imagesForRoomType } from '../data/initialData';
+import { buildAvatarFromName, resolveReviewAvatar } from '../utils/userAvatar';
+
+function enrichUsers(users: User[]): { users: User[]; changed: boolean } {
+  let changed = false;
+  const enriched = users.map((u) => {
+    if (u.avatarUrl?.trim()) return u;
+    changed = true;
+    return { ...u, avatarUrl: buildAvatarFromName(u.name) };
+  });
+  return { users: enriched, changed };
+}
+
+const LEGACY_ROOM_REVIEW_IDS = new Set(['11', '12', '13', '14', '15', '16', '17', '18']);
+
+function stripLegacyRoomReviews(reviews: Review[]): Review[] {
+  return reviews.filter((r) => !LEGACY_ROOM_REVIEW_IDS.has(r.id));
+}
+
+function mergeReviewsWithSeed(reviews: Review[]): Review[] {
+  const cleaned = stripLegacyRoomReviews(reviews);
+  const seedById = new Map(INITIAL_REVIEWS.map((r) => [r.id, r]));
+  return cleaned.map((review) => {
+    const seed = seedById.get(review.id);
+    if (!seed) return review;
+    return {
+      ...review,
+      userAvatarUrl: review.userAvatarUrl ?? seed.userAvatarUrl,
+      roomId: review.roomId ?? seed.roomId,
+      roomNumber: review.roomNumber ?? seed.roomNumber,
+      roomName: review.roomName ?? seed.roomName,
+    };
+  });
+}
+
+function enrichReviews(reviews: Review[], users: User[]): { reviews: Review[]; changed: boolean } {
+  let changed = false;
+  const enriched = reviews.map((r) => {
+    if (r.userAvatarUrl?.trim()) return r;
+    changed = true;
+    return { ...r, userAvatarUrl: resolveReviewAvatar(r, users) };
+  });
+  return { reviews: enriched, changed };
+}
+
+/** Garantiza 3–4 reseñas por cada habitación del inventario actual. */
+function ensureRoomReviewsForInventory(
+  reviews: Review[],
+  rooms: Room[]
+): { reviews: Review[]; changed: boolean } {
+  let changed = false;
+  const result = [...reviews];
+  const existingIds = new Set(result.map((r) => r.id));
+
+  for (const room of rooms) {
+    for (let i = 0; i < reviewsPerRoom(room.id); i++) {
+      const entry = createRoomReviewEntry(room, i);
+      if (!existingIds.has(entry.id)) {
+        result.push(entry);
+        existingIds.add(entry.id);
+        changed = true;
+      }
+    }
+  }
+
+  return { reviews: result, changed };
+}
+
+function normalizeReviewCatalog(
+  raw: Review[],
+  rooms: Room[],
+  users: User[]
+): { reviews: Review[]; changed: boolean } {
+  let reviews = stripLegacyRoomReviews(raw);
+  let changed = reviews.length !== raw.length;
+
+  const knownIds = new Set(reviews.map((r) => r.id));
+  for (const seed of INITIAL_REVIEWS) {
+    if (!knownIds.has(seed.id)) {
+      reviews.push(seed);
+      knownIds.add(seed.id);
+      changed = true;
+    }
+  }
+
+  const roomSync = ensureRoomReviewsForInventory(reviews, rooms);
+  reviews = roomSync.reviews;
+  changed = changed || roomSync.changed;
+
+  const merged = mergeReviewsWithSeed(reviews);
+  if (JSON.stringify(merged) !== JSON.stringify(reviews)) changed = true;
+  reviews = merged;
+
+  const { reviews: enriched, changed: avatarChanged } = enrichReviews(reviews, users);
+  changed = changed || avatarChanged;
+
+  return { reviews: enriched, changed };
+}
+
+const MIN_ROOM_IMAGES = 4;
+
+function normalizeRoomImages(rooms: Room[]): { rooms: Room[]; changed: boolean } {
+  const seedById = new Map(INITIAL_ROOMS.map((r) => [r.id, r]));
+  let changed = false;
+
+  const normalized = rooms.map((room) => {
+    const seed = seedById.get(room.id);
+    const target =
+      seed?.images?.length >= MIN_ROOM_IMAGES
+        ? seed.images.slice(0, MIN_ROOM_IMAGES)
+        : imagesForRoomType(room.type).slice(0, MIN_ROOM_IMAGES);
+
+    const currentKey = (room.images ?? []).slice(0, MIN_ROOM_IMAGES).join('|');
+    const targetKey = target.join('|');
+    if (currentKey === targetKey) return room;
+
+    changed = true;
+    return { ...room, images: target };
+  });
+
+  return { rooms: normalized, changed };
+}
+
+function normalizeRoomsCatalog(raw: Room[]): { rooms: Room[]; changed: boolean } {
+  let rooms = raw;
+  let changed = false;
+
+  const existingIds = new Set(rooms.map((r) => r.id));
+  const missing = INITIAL_ROOMS.filter((r) => !existingIds.has(r.id));
+  if (missing.length > 0) {
+    rooms = [...rooms, ...missing];
+    changed = true;
+  }
+
+  rooms = rooms.map((r) => ({
+    ...r,
+    status: r.status || RoomStatus.Available,
+    number: r.number || r.id,
+  }));
+
+  const imageSync = normalizeRoomImages(rooms);
+  rooms = imageSync.rooms;
+  changed = changed || imageSync.changed;
+
+  return { rooms, changed };
+}
+
 import { normalizeInvoice } from '../utils/invoiceHelpers';
 import { isSupabaseConfigured, type StorageSource } from '../lib/supabase';
 import {
@@ -222,14 +368,21 @@ export function resetStorageCacheForTests() {
 
 export const storage = {
   getRooms: (): Room[] => {
-    if (memoryCache?.rooms) return memoryCache.rooms;
+    if (memoryCache?.rooms) {
+      const before = JSON.stringify(memoryCache.rooms);
+      const { rooms: normalized, changed } = normalizeRoomsCatalog(memoryCache.rooms);
+      if (changed || before !== JSON.stringify(normalized)) {
+        memoryCache.rooms = normalized;
+        localStorage.setItem(KEYS.ROOMS, JSON.stringify(normalized));
+      }
+      return normalized;
+    }
 
     const data = localStorage.getItem(KEYS.ROOMS);
     let rooms: Room[] = [];
 
     if (!data) {
       rooms = INITIAL_ROOMS;
-      localStorage.setItem(KEYS.ROOMS, JSON.stringify(rooms));
     } else {
       try {
         rooms = JSON.parse(data);
@@ -237,22 +390,16 @@ export const storage = {
         console.error('Error parsing rooms', e);
         rooms = INITIAL_ROOMS;
       }
-      const existingIds = new Set(rooms.map((r: Room) => r.id));
-      const missingRooms = INITIAL_ROOMS.filter((r) => !existingIds.has(r.id));
-      if (missingRooms.length > 0) {
-        rooms = [...rooms, ...missingRooms];
-        localStorage.setItem(KEYS.ROOMS, JSON.stringify(rooms));
-      }
     }
 
-    rooms = rooms.map((r: Room) => ({
-      ...r,
-      status: r.status || RoomStatus.Available,
-      number: r.number || r.id,
-    }));
+    const before = JSON.stringify(rooms);
+    const { rooms: normalized, changed } = normalizeRoomsCatalog(rooms);
+    if (changed || !data || before !== JSON.stringify(normalized)) {
+      localStorage.setItem(KEYS.ROOMS, JSON.stringify(normalized));
+    }
 
-    if (memoryCache) memoryCache.rooms = rooms;
-    return rooms;
+    if (memoryCache) memoryCache.rooms = normalized;
+    return normalized;
   },
 
   saveRoom: (room: Room) => {
@@ -358,14 +505,24 @@ export const storage = {
   },
 
   getReviews: (): Review[] => {
-    if (memoryCache?.reviews) return memoryCache.reviews;
+    const users = storage.getUsers();
+    const rooms = storage.getRooms();
+
+    if (memoryCache?.reviews) {
+      const before = JSON.stringify(memoryCache.reviews);
+      const { reviews: normalized, changed } = normalizeReviewCatalog(memoryCache.reviews, rooms, users);
+      if (changed || before !== JSON.stringify(normalized)) {
+        memoryCache.reviews = normalized;
+        localStorage.setItem(KEYS.REVIEWS, JSON.stringify(normalized));
+      }
+      return normalized;
+    }
 
     const data = localStorage.getItem(KEYS.REVIEWS);
     let reviews: Review[] = [];
 
     if (!data) {
       reviews = INITIAL_REVIEWS;
-      localStorage.setItem(KEYS.REVIEWS, JSON.stringify(reviews));
     } else {
       try {
         reviews = JSON.parse(data);
@@ -373,16 +530,16 @@ export const storage = {
         console.error('Error parsing reviews', e);
         reviews = INITIAL_REVIEWS;
       }
-      const existingIds = new Set(reviews.map((r: Review) => r.id));
-      const missingReviews = INITIAL_REVIEWS.filter((r) => !existingIds.has(r.id));
-      if (missingReviews.length > 0) {
-        reviews = [...reviews, ...missingReviews];
-        localStorage.setItem(KEYS.REVIEWS, JSON.stringify(reviews));
-      }
     }
 
-    if (memoryCache) memoryCache.reviews = reviews;
-    return reviews;
+    const before = JSON.stringify(reviews);
+    const { reviews: normalized, changed } = normalizeReviewCatalog(reviews, rooms, users);
+    if (changed || !data || before !== JSON.stringify(normalized)) {
+      localStorage.setItem(KEYS.REVIEWS, JSON.stringify(normalized));
+    }
+
+    if (memoryCache) memoryCache.reviews = normalized;
+    return normalized;
   },
 
   saveReview: (review: Review) => {
@@ -410,14 +567,20 @@ export const storage = {
   },
 
   getUsers: (): User[] => {
-    if (memoryCache?.users) return memoryCache.users;
+    if (memoryCache?.users) {
+      const { users: enriched, changed } = enrichUsers(memoryCache.users);
+      if (changed) {
+        memoryCache.users = enriched;
+        localStorage.setItem(KEYS.USERS, JSON.stringify(enriched));
+      }
+      return enriched;
+    }
 
     const data = localStorage.getItem(KEYS.USERS);
     let users: User[] = [];
 
     if (!data) {
       users = INITIAL_USERS;
-      localStorage.setItem(KEYS.USERS, JSON.stringify(users));
     } else {
       try {
         users = JSON.parse(data);
@@ -429,12 +592,16 @@ export const storage = {
       const missingUsers = INITIAL_USERS.filter((u) => !existingEmails.has(u.email));
       if (missingUsers.length > 0) {
         users = [...users, ...missingUsers];
-        localStorage.setItem(KEYS.USERS, JSON.stringify(users));
       }
     }
 
-    if (memoryCache) memoryCache.users = users;
-    return users;
+    const { users: enriched, changed } = enrichUsers(users);
+    if (changed || !data) {
+      localStorage.setItem(KEYS.USERS, JSON.stringify(enriched));
+    }
+
+    if (memoryCache) memoryCache.users = enriched;
+    return enriched;
   },
 
   getCurrentUser: (): User | null => {

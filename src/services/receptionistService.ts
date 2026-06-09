@@ -77,12 +77,15 @@ function mergeLocalKnowledge(entries?: Array<{ topic: string; content: string }>
   }
 }
 
+const useN8nReceptionist = import.meta.env.VITE_USE_N8N_RECEPTIONIST === 'true';
+
 export const receptionistService = {
   async sendMessage(
     message: string,
     history: ReceptionistMessage[] = []
   ): Promise<{ text: string }> {
-    const response = await fetch('/api/receptionist/chat', {
+    const endpoint = useN8nReceptionist ? '/api/n8n/receptionist' : '/api/receptionist/chat';
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -101,13 +104,19 @@ export const receptionistService = {
 
     if (response.status === 404) {
       throw new Error(
-        'Servidor desactualizado: reinicie con "node node_modules/tsx/dist/cli.mjs server.ts" (no use vite solo).'
+        useN8nReceptionist
+          ? 'Proxy n8n no configurado: agregue N8N_WEBHOOK_URL y VITE_USE_N8N_RECEPTIONIST=true en .env.local y reinicie el servidor.'
+          : 'Servidor desactualizado: reinicie con "node node_modules/tsx/dist/cli.mjs server.ts" (no use vite solo).'
       );
     }
 
     if (!response.ok) {
       throw new Error(
-        data.message || data.error || 'Recepción no disponible en este momento. Intente de nuevo.'
+        data.message ||
+          data.error ||
+          (useN8nReceptionist
+            ? 'Valentina (n8n) no disponible. Verifique Docker: docker start n8n'
+            : 'Recepción no disponible en este momento. Intente de nuevo.')
       );
     }
 

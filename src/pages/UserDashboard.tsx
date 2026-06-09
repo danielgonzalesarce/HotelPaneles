@@ -26,6 +26,9 @@ import {
   PanelCard,
 } from '../components/ui/PanelUi';
 import { formInputClass, FormField, FormSection } from '../components/ui/Modal';
+import { UserAvatar } from '../components/UserAvatar';
+import { readImageAsDataUrl } from '../utils/imageUpload';
+import { resolveUserAvatar } from '../utils/userAvatar';
 
 const USER_ROUTE_META: { match: (path: string) => boolean; title: string; subtitle?: string }[] = [
   { match: (p) => p === '/user' || p === '/user/', title: 'Mi panel', subtitle: 'Bienvenido de nuevo a Lumina Hotel & Spa.' },
@@ -291,6 +294,7 @@ function UserReservations({ user }: { user: UserType }) {
 function UserProfile({ user }: { user: UserType }) {
   const { showToast } = useToast();
   const [formData, setFormData] = useState({ ...user });
+  const [isUploading, setIsUploading] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -298,9 +302,48 @@ function UserProfile({ user }: { user: UserType }) {
     showToast('Perfil actualizado con éxito.');
   };
 
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploading(true);
+    try {
+      const dataUrl = await readImageAsDataUrl(file);
+      setFormData((prev) => ({ ...prev, avatarUrl: dataUrl }));
+      showToast('Foto de perfil actualizada. Guarde los cambios.');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'No se pudo cargar la imagen.', 'error');
+    } finally {
+      setIsUploading(false);
+      e.target.value = '';
+    }
+  };
+
   return (
     <PanelCard className="max-w-xl">
       <form id="user-profile-form" onSubmit={handleSubmit} className="space-y-5">
+        <div className="flex flex-col sm:flex-row items-center gap-5 pb-2">
+          <UserAvatar
+            name={formData.name}
+            avatarUrl={resolveUserAvatar(formData)}
+            size="xl"
+            ring
+          />
+          <div className="text-center sm:text-left space-y-2">
+            <p className="font-bold text-slate-900">{formData.name}</p>
+            <p className="text-sm text-slate-500">{formData.email}</p>
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+              {isUploading ? 'Cargando…' : 'Cambiar foto'}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleAvatarChange}
+                disabled={isUploading}
+              />
+            </label>
+            <p className="text-xs text-slate-400">Esta foto aparecerá en sus reseñas.</p>
+          </div>
+        </div>
         <FormSection title="Datos personales" accent="indigo">
           <FormField label="Nombre completo" required>
             <input

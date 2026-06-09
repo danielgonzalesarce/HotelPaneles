@@ -93,6 +93,11 @@ export interface Review {
   id: string;
   userId: string;
   userName: string;
+  userAvatarUrl?: string;
+  /** Sin roomId = reseña general del hotel (home). Con roomId = reseña de habitación. */
+  roomId?: string;
+  roomNumber?: string;
+  roomName?: string;
   rating: number;
   comment: string;
   date: string;
@@ -104,6 +109,7 @@ export interface User {
   name: string;
   email: string;
   phone: string;
+  avatarUrl?: string;
   role: 'user' | 'admin' | 'super_admin';
   password?: string;
   tenantId?: string;

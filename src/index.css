@@ -32,3 +32,23 @@
 .btn-secondary {
   @apply bg-white text-slate-900 border border-slate-300 px-8 py-4 rounded-full font-semibold tracking-tight hover:border-slate-900 transition-all active:scale-[0.98];
 }
+
+@keyframes reviews-marquee-left {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@keyframes reviews-marquee-right {
+  from { transform: translateX(-50%); }
+  to { transform: translateX(0); }
+}
+
+.animate-reviews-marquee-left {
+  animation: reviews-marquee-left linear infinite;
+  will-change: transform;
+}
+
+.animate-reviews-marquee-right {
+  animation: reviews-marquee-right linear infinite;
+  will-change: transform;
+}

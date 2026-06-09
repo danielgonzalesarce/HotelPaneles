@@ -28,7 +28,12 @@ export function generateFallbackReply(
 
   const signOff = "¿Desea **reservar** alguna? Indíqueme nombre, fechas y huéspedes.";
 
-  if (/^hola|buenas|buenos|saludos|hey/i.test(lower)) {
+  const bookingReply = tryFallbackBookingReply(message, snapshot, history);
+  if (bookingReply) return bookingReply;
+
+  const hasBookingIntent = /reserv|booking|hosped|apartar|ma[nñ]ana|habitaci|personas/i.test(lower);
+
+  if (!hasBookingIntent && /^hola|buenas|buenos|saludos|hey/i.test(lower)) {
     const hour = new Date().getHours();
     let saludo = "Buenos días";
     if (/buenas noches/i.test(lower) || hour >= 19 || hour < 6) saludo = "Buenas noches";
@@ -59,9 +64,6 @@ Si quiere ver **nombres y números** de habitación, dígame por ejemplo: *"dime
 
   const dateAvailability = answerDateAvailabilityQuery(message, snapshot, history);
   if (dateAvailability) return dateAvailability;
-
-  const bookingReply = tryFallbackBookingReply(message, snapshot, history);
-  if (bookingReply) return bookingReply;
 
   const roomDetailAnswer = answerRoomDetailQuery(message, snapshot, history);
   if (roomDetailAnswer) return roomDetailAnswer;
